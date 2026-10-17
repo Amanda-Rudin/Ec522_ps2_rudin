@@ -1,0 +1,195 @@
+---
+title: "Problem Set 2"
+author: "Amanda Rudin"
+date: "2026-10-16"
+format:
+  html:
+    toc: true
+    embed-resources: true
+---
+
+**GitHub repo:** <https://github.com/Amanda-Rudin/Ec522_ps2_rudin>
+
+---
+
+## Data
+
+The data at hand is monthly unemployments rates from Jan 1, 1976, from FRED.
+
+```{r}
+library(tidyquant)
+library(tidyverse)
+
+# unemp_raw <- tq_get(
+#   c("UNRATE", "ORUR", "CAUR", "TXUR", "NYUR"),
+#   get  = "economic.data",
+#   from = "1976-01-01"
+# )
+# 
+# head(unemp_raw)
+# 
+# dir.create("data", showWarnings = FALSE)
+# 
+# write_rds(unemp_raw, "data/unemp_raw.rds")
+
+unemp_raw = read_rds("data/unemp_raw.rds")
+
+head(unemp_raw)
+```
+
+## wrangling
+
+I renamed price to unemployment_rate for this graph, and added region names. I also filled in missing oct 2025 values with sept 2025. I also created a month to month change for each region.
+
+```{r}
+library(knitr)
+
+unemp <- unemp_raw |>
+  rename(unemployment_rate = price) |>
+  mutate(
+    region = case_when(
+      symbol == "UNRATE" ~ "United States",
+      symbol == "ORUR"   ~ "Oregon",
+      symbol == "CAUR"   ~ "California",
+      symbol == "TXUR"   ~ "Texas",
+      symbol == "NYUR"   ~ "New York"
+    )
+  )
+
+unemp <- unemp |>
+  arrange(region, date) |>
+  group_by(region) |>
+  mutate(
+    unemployment_rate = replace(
+      unemployment_rate,
+      date == as.Date("2025-10-01"),
+      unemployment_rate[date == as.Date("2025-09-01")]
+    )
+  ) |>
+  ungroup()
+
+unemp <- unemp |>
+  arrange(region, date) |>
+  group_by(region) |>
+  mutate(unemployment_rate_change = unemployment_rate - lag(unemployment_rate)) |>
+  ungroup()
+
+unemp_recent <- unemp |>
+  filter(date >= as.Date("2015-01-01"))
+
+unemp_summary <- unemp |>
+  group_by(region) |>
+  summarize(
+    mean_rate = mean(unemployment_rate, na.rm = TRUE),
+    min_rate  = min(unemployment_rate,  na.rm = TRUE),
+    max_rate  = max(unemployment_rate,  na.rm = TRUE)
+  )
+
+unemp_recent_summary <- unemp_recent |>
+  group_by(region) |>
+  summarize(
+    mean_rate = mean(unemployment_rate, na.rm = TRUE),
+    min_rate  = min(unemployment_rate,  na.rm = TRUE),
+    max_rate  = max(unemployment_rate,  na.rm = TRUE)
+  )
+
+unemp_no_covid <- unemp |>
+  filter(lubridate::year(date) != 2020)
+
+unemp_top_increases_no_covid <- unemp_no_covid |>
+  slice_max(unemployment_rate_change, n = 5)
+
+unemp_top_decreases_no_covid <- unemp_no_covid |>
+  slice_min(unemployment_rate_change, n = 5)
+```
+
+## This graph shows the mean, min, and max unemp rate for each region across the full sample. 
+
+```{r}
+kable(unemp_summary, digits = 2)
+```
+
+## This table is the same as above but only 015 onward. 
+
+```{r}
+kable(unemp_recent_summary, digits = 2)
+```
+
+## This table doesn't have 2020 (covic), and shows the 5 largest month-to-month increases across all regions.
+
+```{r}
+kable(unemp_top_increases_no_covid, digits = 2)
+```
+
+## This table shows the 5 largest month to month decreases across all regions (no 2020)
+
+```{r}
+kable(unemp_top_decreases_no_covid, digits = 2)
+```
+
+## Visualization
+
+## This plot shows the monthly unemployment rate for all five regions on one chart. 
+ 
+
+```{r}
+ggplot(unemp, aes(x = date, y = unemployment_rate, color = region)) +
+  geom_line() +
+  labs(
+    title = "Monthly Unemployment Rate by Region",
+    x = "Date",
+    y = "Unemployment Rate (%)",
+    color = "Region"
+  ) +
+  theme_minimal()
+```
+
+This plot shows the same data but a seperate panel for ecah region.
+
+```{r}
+ggplot(unemp, aes(x = date, y = unemployment_rate, color = region)) +
+  geom_line() +
+  facet_wrap(~ region) +
+  labs(
+    title = "Monthly Unemployment Rate by Region",
+    x = "Date",
+    y = "Unemployment Rate (%)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+This shows the avg unemp rate for each region over the full sample, from lowest to highest.
+
+```{r}
+ggplot(unemp_summary, aes(x = fct_reorder(region, mean_rate), y = mean_rate)) +
+  geom_col() +
+  labs(
+    title = "Average Unemployment Rate by Region",
+    x = "Region",
+    y = "Mean Unemployment Rate (%)"
+  ) +
+  theme_minimal()
+```
+
+This plot shows the full sample avg next to the post-2015 avg.
+
+```{r}
+bind_rows(
+  unemp_summary |> mutate(period = "Full Sample"),
+  unemp_recent_summary |> mutate(period = "2015 Onward")
+) |>
+  ggplot(aes(x = fct_reorder(region, mean_rate), y = mean_rate, fill = period)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Average Unemployment Rate: Full Sample vs. 2015 Onward",
+    x = "Region",
+    y = "Mean Unemployment Rate (%)",
+    fill = "Period"
+  ) +
+  theme_minimal()
+```
+
+## Reflection
+
+For this assignment, what tripped me up the most was using the Quarto document as I have never done this before. The formatting is still very confusing to me, and I am unsure if I have done it correctly. I feel more comfortable with committing to GitHub than I did before this assignment. I also feel more confident in my plotting abilitites.
